@@ -1,0 +1,51 @@
+@page "/rooms"
+@inject ApplicationDbContext Db
+
+<PageTitle>Rooms</PageTitle>
+
+<h1>Rooms</h1>
+<p>Browse our music rooms and book your practice time.</p>
+
+@if (rooms is null)
+{
+    <p>Loading...</p>
+}
+else if (rooms.Count == 0)
+{
+    <p>No rooms available at the moment.</p>
+}
+else
+{
+    <div class="row">
+        @foreach (var room in rooms)
+        {
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    @if (!string.IsNullOrWhiteSpace(room.ImageUrl))
+                    {
+                        <img src="@room.ImageUrl" class="card-img-top" alt="@room.Name" style="height: 200px; object-fit: cover;" />
+                    }
+                    <div class="card-body">
+                        <h5 class="card-title">@room.Name</h5>
+                        <p class="card-text">Capacity: @room.Capacity</p>
+                    </div>
+                    <div class="card-footer bg-white border-0">
+                        <a href="@($"/rooms/{room.Id}")" class="btn btn-primary w-100">View details</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Room>? rooms;
+
+    protected override async Task OnInitializedAsync()
+    {
+        rooms = await Db.Rooms
+            .Where(r => r.IsActive)
+            .OrderBy(r => r.Name)
+            .ToListAsync();
+    }
+}
