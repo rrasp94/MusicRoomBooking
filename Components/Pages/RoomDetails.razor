@@ -27,6 +27,22 @@ else
         <div class="col-md-6">
             <p>@room.Description</p>
             <p><strong>Capacity:</strong> @room.Capacity people</p>
+
+            <h4>Equipment</h4>
+            @if (room.EquipmentItems.Count == 0)
+            {
+                <p>No equipment listed for this room.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var item in room.EquipmentItems.OrderBy(e => e.Name))
+                    {
+                        <li>@item.Name</li>
+                    }
+                </ul>
+            }
+
             <a href="/rooms" class="btn btn-secondary">Back to rooms</a>
         </div>
     </div>
@@ -41,7 +57,9 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        room = await Db.Rooms.FirstOrDefaultAsync(r => r.Id == Id && r.IsActive);
+        room = await Db.Rooms
+            .Include(r => r.EquipmentItems)
+            .FirstOrDefaultAsync(r => r.Id == Id && r.IsActive);
         loading = false;
     }
 }
