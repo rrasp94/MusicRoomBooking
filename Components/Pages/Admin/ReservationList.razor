@@ -1,0 +1,72 @@
+@page "/admin/reservations"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext Db
+@inject IJSRuntime JS
+
+<PageTitle>Manage reservations</PageTitle>
+
+<h1>Manage reservations</h1>
+
+@if (reservations is null)
+{
+    <p>Loading...</p>
+}
+else if (reservations.Count == 0)
+{
+    <p>There are no reservations.</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Room</th>
+                <th>User</th>
+                <th>Start</th>
+                <th>End</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in reservations)
+            {
+                <tr>
+                    <td>@r.Room?.Name</td>
+                    <td>@r.User?.Email</td>
+                    <td>@r.StartTime.ToString("g")</td>
+                    <td>@r.EndTime.ToString("g")</td>
+                    <td class="text-end">
+                        <a href="@($"/admin/reservations/edit/{r.Id}")" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(r)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Reservation>? reservations;
+
+    protected override async Task OnInitializedAsync()
+    {
+        reservations = await Db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.User)
+            .OrderByDescending(r => r.StartTime)
+            .ToListAsync();
+    }
+
+    private async Task Delete(Reservation reservation)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Delete this reservation?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        Db.Reservations.Remove(reservation);
+        await Db.SaveChangesAsync();
+        reservations!.Remove(reservation);
+    }
+}

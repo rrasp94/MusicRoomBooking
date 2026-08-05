@@ -1,0 +1,83 @@
+@page "/admin/reservations/edit/{Id:int}"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext Db
+@inject NavigationManager Navigation
+
+<PageTitle>Edit reservation</PageTitle>
+
+<h1>Edit reservation</h1>
+
+@if (reservation is null)
+{
+    <p>Reservation not found.</p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-6">
+            <p><strong>Room:</strong> @reservation.Room?.Name</p>
+            <p><strong>User:</strong> @reservation.User?.Email</p>
+
+            <EditForm Model="reservation" OnValidSubmit="Save">
+                <div class="mb-3">
+                    <label class="form-label">Start</label>
+                    <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="reservation.StartTime" class="form-control" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">End</label>
+                    <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="reservation.EndTime" class="form-control" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger">@errorMessage</div>
+                }
+
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="/admin/reservations" class="btn btn-secondary">Cancel</a>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Reservation? reservation;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        reservation = await Db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.User)
+            .FirstOrDefaultAsync(r => r.Id == Id);
+    }
+
+    private async Task Save()
+    {
+        errorMessage = null;
+
+        if (reservation!.EndTime <= reservation.StartTime)
+        {
+            errorMessage = "The end time must be after the start time.";
+            return;
+        }
+
+        // Check for overlaps with other reservations of the same room (ignore this reservation itself).
+        var overlaps = await Db.Reservations.AnyAsync(r =>
+            r.RoomId == reservation.RoomId &&
+            r.Id != reservation.Id &&
+            r.StartTime < reservation.EndTime &&
+            reservation.StartTime < r.EndTime);
+        if (overlaps)
+        {
+            errorMessage = "The new time overlaps another reservation for this room.";
+            return;
+        }
+
+        await Db.SaveChangesAsync();
+        Navigation.NavigateTo("/admin/reservations");
+    }
+}
