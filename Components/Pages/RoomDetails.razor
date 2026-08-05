@@ -43,6 +43,14 @@ else
                 </ul>
             }
 
+            <AuthorizeView>
+                <Authorized>
+                    <a href="@($"/rooms/{room.Id}/reserve")" class="btn btn-primary">Book this room</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/Account/Login" class="btn btn-primary">Log in to book</a>
+                </NotAuthorized>
+            </AuthorizeView>
             <a href="/rooms" class="btn btn-secondary">Back to rooms</a>
         </div>
     </div>

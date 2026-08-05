@@ -1,0 +1,80 @@
+@page "/my-reservations"
+@attribute [Authorize]
+@using System.Security.Claims
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthProvider
+
+<PageTitle>My reservations</PageTitle>
+
+<h1>My reservations</h1>
+
+@if (reservations is null)
+{
+    <p>Loading...</p>
+}
+else if (reservations.Count == 0)
+{
+    <p>You have no reservations yet. <a href="/rooms">Browse rooms</a> to make one.</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Room</th>
+                <th>Start</th>
+                <th>End</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in reservations)
+            {
+                <tr>
+                    <td>@r.Room?.Name</td>
+                    <td>@r.StartTime.ToString("g")</td>
+                    <td>@r.EndTime.ToString("g")</td>
+                    <td class="text-end">
+                        @if (r.StartTime > DateTime.Now)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Cancel(r)">Cancel</button>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Past</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Reservation>? reservations;
+    private string? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        await LoadReservations();
+    }
+
+    private async Task LoadReservations()
+    {
+        reservations = await Db.Reservations
+            .Include(r => r.Room)
+            .Where(r => r.UserId == userId)
+            .OrderByDescending(r => r.StartTime)
+            .ToListAsync();
+    }
+
+    private async Task Cancel(Reservation reservation)
+    {
+        Db.Reservations.Remove(reservation);
+        await Db.SaveChangesAsync();
+        reservations!.Remove(reservation);
+    }
+}

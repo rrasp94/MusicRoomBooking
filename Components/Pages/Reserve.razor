@@ -1,0 +1,138 @@
+@page "/rooms/{RoomId:int}/reserve"
+@attribute [Authorize]
+@using System.Security.Claims
+@using System.ComponentModel.DataAnnotations
+@inject ApplicationDbContext Db
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthProvider
+
+<PageTitle>Reserve a room</PageTitle>
+
+@if (room is null)
+{
+    <p>Room not found.</p>
+}
+else
+{
+    <h1>Reserve @room.Name</h1>
+
+    <div class="row">
+        <div class="col-md-6">
+            <EditForm Model="booking" OnValidSubmit="SubmitReservation">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="text-danger" />
+
+                <div class="mb-3">
+                    <label class="form-label">Start</label>
+                    <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="booking.StartTime" class="form-control" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">End</label>
+                    <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="booking.EndTime" class="form-control" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger">@errorMessage</div>
+                }
+
+                <button type="submit" class="btn btn-primary">Reserve</button>
+                <a href="@($"/rooms/{RoomId}")" class="btn btn-secondary">Cancel</a>
+            </EditForm>
+        </div>
+
+        <div class="col-md-6">
+            <h5>Upcoming reservations for this room</h5>
+            @if (upcoming.Count == 0)
+            {
+                <p>No upcoming reservations.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var r in upcoming)
+                    {
+                        <li>@r.StartTime.ToString("g") – @r.EndTime.ToString("g")</li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int RoomId { get; set; }
+
+    private Room? room;
+    private List<Reservation> upcoming = new();
+    private BookingModel booking = new();
+    private string? userId;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        room = await Db.Rooms.FirstOrDefaultAsync(r => r.Id == RoomId && r.IsActive);
+
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        await LoadUpcoming();
+    }
+
+    private async Task LoadUpcoming()
+    {
+        upcoming = await Db.Reservations
+            .AsNoTracking()
+            .Where(r => r.RoomId == RoomId && r.EndTime > DateTime.Now)
+            .OrderBy(r => r.StartTime)
+            .ToListAsync();
+    }
+
+    private async Task SubmitReservation()
+    {
+        errorMessage = null;
+        var start = booking.StartTime!.Value;
+        var end = booking.EndTime!.Value;
+
+        if (start < DateTime.Now)
+        {
+            errorMessage = "The start time cannot be in the past.";
+            return;
+        }
+        if (end <= start)
+        {
+            errorMessage = "The end time must be after the start time.";
+            return;
+        }
+
+        // Two reservations overlap when one starts before the other ends and vice versa.
+        var overlaps = await Db.Reservations
+            .AnyAsync(r => r.RoomId == RoomId && r.StartTime < end && start < r.EndTime);
+        if (overlaps)
+        {
+            errorMessage = "This time slot is already reserved. Please choose another time.";
+            return;
+        }
+
+        Db.Reservations.Add(new Reservation
+        {
+            RoomId = RoomId,
+            UserId = userId!,
+            StartTime = start,
+            EndTime = end
+        });
+        await Db.SaveChangesAsync();
+
+        Navigation.NavigateTo("/my-reservations");
+    }
+
+    private class BookingModel
+    {
+        [Required]
+        public DateTime? StartTime { get; set; }
+
+        [Required]
+        public DateTime? EndTime { get; set; }
+    }
+}
