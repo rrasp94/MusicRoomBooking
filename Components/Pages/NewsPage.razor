@@ -1,0 +1,40 @@
+@page "/news"
+@inject ApplicationDbContext Db
+
+<PageTitle>News</PageTitle>
+
+<h1>News</h1>
+
+@if (news is null)
+{
+    <p>Loading...</p>
+}
+else if (news.Count == 0)
+{
+    <p>There are no news posts yet.</p>
+}
+else
+{
+    @foreach (var item in news)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h4 class="card-title">@item.Title</h4>
+                <h6 class="card-subtitle mb-2 text-muted">@item.CreatedAt.ToString("d")</h6>
+                <p class="card-text" style="white-space: pre-line;">@item.Content</p>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<News>? news;
+
+    protected override async Task OnInitializedAsync()
+    {
+        news = await Db.NewsItems
+            .AsNoTracking()
+            .OrderByDescending(n => n.CreatedAt)
+            .ToListAsync();
+    }
+}

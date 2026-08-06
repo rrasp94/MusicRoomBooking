@@ -1,0 +1,69 @@
+@page "/admin/news"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext Db
+@inject IJSRuntime JS
+
+<PageTitle>Manage news</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Manage news</h1>
+    <a href="/admin/news/create" class="btn btn-primary">Add news</a>
+</div>
+
+@if (news is null)
+{
+    <p>Loading...</p>
+}
+else if (news.Count == 0)
+{
+    <p>No news posts yet.</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in news)
+            {
+                <tr>
+                    <td>@item.Title</td>
+                    <td>@item.CreatedAt.ToString("d")</td>
+                    <td class="text-end">
+                        <a href="@($"/admin/news/edit/{item.Id}")" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(item)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<News>? news;
+
+    protected override async Task OnInitializedAsync()
+    {
+        news = await Db.NewsItems
+            .OrderByDescending(n => n.CreatedAt)
+            .ToListAsync();
+    }
+
+    private async Task Delete(News item)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete \"{item.Title}\"?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        Db.NewsItems.Remove(item);
+        await Db.SaveChangesAsync();
+        news!.Remove(item);
+    }
+}

@@ -1,0 +1,41 @@
+@page "/admin/news/create"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext Db
+@inject NavigationManager Navigation
+
+<PageTitle>Add news</PageTitle>
+
+<h1>Add news</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <EditForm Model="news" OnValidSubmit="Save">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                <InputText @bind-Value="news.Title" class="form-control" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Content</label>
+                <InputTextArea @bind-Value="news.Content" class="form-control" rows="8" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a href="/admin/news" class="btn btn-secondary">Cancel</a>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private News news = new();
+
+    private async Task Save()
+    {
+        news.CreatedAt = DateTime.Now;
+        Db.NewsItems.Add(news);
+        await Db.SaveChangesAsync();
+        Navigation.NavigateTo("/admin/news");
+    }
+}

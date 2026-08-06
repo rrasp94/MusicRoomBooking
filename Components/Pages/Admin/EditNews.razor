@@ -1,0 +1,55 @@
+@page "/admin/news/edit/{Id:int}"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApplicationDbContext Db
+@inject NavigationManager Navigation
+
+<PageTitle>Edit news</PageTitle>
+
+<h1>Edit news</h1>
+
+@if (news is null)
+{
+    <p>News post not found.</p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-8">
+            <EditForm Model="news" OnValidSubmit="Save">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="text-danger" />
+
+                <div class="mb-3">
+                    <label class="form-label">Title</label>
+                    <InputText @bind-Value="news.Title" class="form-control" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Content</label>
+                    <InputTextArea @bind-Value="news.Content" class="form-control" rows="8" />
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="/admin/news" class="btn btn-secondary">Cancel</a>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private News? news;
+
+    protected override async Task OnInitializedAsync()
+    {
+        news = await Db.NewsItems.FindAsync(Id);
+    }
+
+    private async Task Save()
+    {
+        news!.UpdatedAt = DateTime.Now;
+        await Db.SaveChangesAsync();
+        Navigation.NavigateTo("/admin/news");
+    }
+}
