@@ -1,5 +1,8 @@
 @page "/rooms/{Id:int}"
+@using System.Security.Claims
+@using System.ComponentModel.DataAnnotations
 @inject ApplicationDbContext Db
+@inject AuthenticationStateProvider AuthProvider
 
 <PageTitle>Room details</PageTitle>
 
@@ -54,6 +57,67 @@ else
             <a href="/rooms" class="btn btn-secondary">Back to rooms</a>
         </div>
     </div>
+
+    <hr />
+
+    <h3>
+        Reviews
+        @if (reviews.Count > 0)
+        {
+            <span class="text-warning">@averageRating.ToString("0.0") ★</span>
+            <small class="text-muted">(@reviews.Count)</small>
+        }
+    </h3>
+
+    @if (canReview)
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Leave a review</h5>
+                <EditForm Model="newReview" OnValidSubmit="SubmitReview">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="text-danger" />
+
+                    <div class="mb-3">
+                        <label class="form-label">Rating</label>
+                        <InputSelect @bind-Value="newReview.Rating" class="form-select" style="max-width: 120px;">
+                            <option value="5">5 ★</option>
+                            <option value="4">4 ★</option>
+                            <option value="3">3 ★</option>
+                            <option value="2">2 ★</option>
+                            <option value="1">1 ★</option>
+                        </InputSelect>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Comment</label>
+                        <InputTextArea @bind-Value="newReview.Comment" class="form-control" rows="3" />
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit review</button>
+                </EditForm>
+            </div>
+        </div>
+    }
+    else if (alreadyReviewed)
+    {
+        <p class="text-muted">You have already reviewed this room.</p>
+    }
+
+    @if (reviews.Count == 0)
+    {
+        <p>No reviews yet.</p>
+    }
+    else
+    {
+        @foreach (var review in reviews)
+        {
+            <div class="border-bottom mb-3 pb-2">
+                <strong>@ReviewerName(review)</strong>
+                <span class="text-warning">@(new string('★', review.Rating))</span>
+                <small class="text-muted">@review.CreatedAt.ToString("d")</small>
+                <p class="mb-0">@review.Comment</p>
+            </div>
+        }
+    }
 }
 
 @code {
@@ -63,11 +127,95 @@ else
     private Room? room;
     private bool loading = true;
 
+    private List<Review> reviews = new();
+    private double averageRating;
+    private string? userId;
+    private bool canReview;
+    private bool alreadyReviewed;
+
+    private ReviewModel newReview = new();
+
     protected override async Task OnInitializedAsync()
     {
         room = await Db.Rooms
             .Include(r => r.EquipmentItems)
             .FirstOrDefaultAsync(r => r.Id == Id && r.IsActive);
+
+        if (room is not null)
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            await LoadReviews();
+            await UpdateReviewEligibility();
+        }
+
         loading = false;
+    }
+
+    private async Task LoadReviews()
+    {
+        reviews = await Db.Reviews
+            .Include(r => r.User)
+            .Where(r => r.RoomId == Id)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync();
+
+        averageRating = reviews.Count > 0 ? reviews.Average(r => r.Rating) : 0;
+    }
+
+    private async Task UpdateReviewEligibility()
+    {
+        canReview = false;
+        alreadyReviewed = false;
+
+        if (userId is null)
+        {
+            return;
+        }
+
+        alreadyReviewed = reviews.Any(r => r.UserId == userId);
+        if (alreadyReviewed)
+        {
+            return;
+        }
+
+        // A user may review a room only after they have had a finished reservation for it.
+        canReview = await Db.Reservations
+            .AnyAsync(r => r.RoomId == Id && r.UserId == userId && r.EndTime < DateTime.Now);
+    }
+
+    private async Task SubmitReview()
+    {
+        Db.Reviews.Add(new Review
+        {
+            RoomId = Id,
+            UserId = userId!,
+            Rating = newReview.Rating,
+            Comment = newReview.Comment
+        });
+        await Db.SaveChangesAsync();
+
+        newReview = new ReviewModel();
+        await LoadReviews();
+        await UpdateReviewEligibility();
+    }
+
+    private static string ReviewerName(Review review)
+    {
+        if (review.User is null)
+        {
+            return "User";
+        }
+        return $"{review.User.FirstName} {review.User.LastName}".Trim();
+    }
+
+    private class ReviewModel
+    {
+        [Range(1, 5)]
+        public int Rating { get; set; } = 5;
+
+        [Required, StringLength(1000)]
+        public string Comment { get; set; } = string.Empty;
     }
 }
