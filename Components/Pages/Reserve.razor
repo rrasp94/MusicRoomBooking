@@ -1,7 +1,6 @@
 @page "/rooms/{RoomId:int}/reserve"
 @attribute [Authorize]
 @using System.Security.Claims
-@using System.ComponentModel.DataAnnotations
 @inject ApplicationDbContext Db
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
@@ -15,60 +14,127 @@
 else
 {
     <h1>Reserve @room.Name</h1>
+    <p class="text-muted">Opening hours: @OpeningHour:00 – @ClosingHour:00. Bookings start on the full hour.</p>
 
-    <div class="row">
-        <div class="col-md-6">
-            <EditForm Model="booking" OnValidSubmit="SubmitReservation">
-                <DataAnnotationsValidator />
-                <ValidationSummary class="text-danger" />
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success">@successMessage</div>
+    }
 
-                <div class="mb-3">
-                    <label class="form-label">Start</label>
-                    <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="booking.StartTime" class="form-control" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">End</label>
-                    <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="booking.EndTime" class="form-control" />
-                </div>
+    <!-- Weekly schedule: days across the top, hours down the side, reserved blocks marked as taken. -->
+    <div class="d-flex align-items-center gap-3 mb-2">
+        <h5 class="mb-0">Weekly schedule</h5>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousWeek">&laquo; Prev</button>
+        <span>@weekStart.ToString("dd.MM.yyyy") – @weekStart.AddDays(6).ToString("dd.MM.yyyy")</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextWeek">Next &raquo;</button>
+    </div>
 
-                @if (!string.IsNullOrEmpty(errorMessage))
-                {
-                    <div class="alert alert-danger">@errorMessage</div>
-                }
-
-                <button type="submit" class="btn btn-primary">Reserve</button>
-                <a href="@($"/rooms/{RoomId}")" class="btn btn-secondary">Cancel</a>
-            </EditForm>
-        </div>
-
-        <div class="col-md-6">
-            <h5>Upcoming reservations for this room</h5>
-            @if (upcoming.Count == 0)
-            {
-                <p>No upcoming reservations.</p>
-            }
-            else
-            {
-                <ul>
-                    @foreach (var r in upcoming)
+    <div class="table-responsive mb-4">
+        <table class="table table-bordered text-center schedule-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    @foreach (var day in WeekDays)
                     {
-                        <li>@r.StartTime.ToString("g") – @r.EndTime.ToString("g")</li>
+                        <th class="@(day.Date == DateTime.Today ? "table-primary" : "")">
+                            @day.ToString("ddd")<br />
+                            <small>@day.ToString("dd.MM")</small>
+                        </th>
                     }
-                </ul>
-            }
+                </tr>
+            </thead>
+            <tbody>
+                @for (int hour = OpeningHour; hour < ClosingHour; hour++)
+                {
+                    <tr>
+                        <th class="align-middle">@hour:00</th>
+                        @foreach (var day in WeekDays)
+                        {
+                            var cellStart = day.AddHours(hour);
+                            var cellEnd = cellStart.AddHours(1);
+                            var taken = weekReservations.Any(r => r.StartTime < cellEnd && cellStart < r.EndTime);
+                            <td class="@(taken ? "table-danger" : "")">
+                                @if (taken)
+                                {
+                                    <small>Taken</small>
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <h5>Book a slot</h5>
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <label class="form-label">Date</label>
+            <InputDate @bind-Value="selectedDate" @bind-Value:after="BuildSlots"
+                       min="@DateTime.Today.ToString("yyyy-MM-dd")" class="form-control" />
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">Duration</label>
+            <InputSelect @bind-Value="durationHours" @bind-Value:after="BuildSlots" class="form-select">
+                <option value="1">1 hour</option>
+                <option value="2">2 hours</option>
+                <option value="3">3 hours</option>
+                <option value="4">4 hours</option>
+            </InputSelect>
         </div>
     </div>
+
+    @if (availableSlots.Count == 0)
+    {
+        <p>No free slots for this date and duration. Try another day or a shorter duration.</p>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            @foreach (var slot in availableSlots)
+            {
+                var isSelected = selectedStart == slot.Start;
+                <button type="button"
+                        class="btn @(isSelected ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => selectedStart = slot.Start">
+                    @slot.Start.ToString("HH:mm") – @slot.End.ToString("HH:mm")
+                </button>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+
+    <button class="btn btn-success" disabled="@(selectedStart is null)" @onclick="Confirm">
+        Confirm reservation
+    </button>
+    <a href="@($"/rooms/{RoomId}")" class="btn btn-secondary">Back to room</a>
 }
 
 @code {
     [Parameter]
     public int RoomId { get; set; }
 
+    private const int OpeningHour = 8;
+    private const int ClosingHour = 22;
+
     private Room? room;
-    private List<Reservation> upcoming = new();
-    private BookingModel booking = new();
     private string? userId;
+
+    private DateTime weekStart;
+    private List<Reservation> weekReservations = new();
+
+    private DateTime selectedDate = DateTime.Today;
+    private int durationHours = 1;
+    private List<(DateTime Start, DateTime End)> availableSlots = new();
+    private DateTime? selectedStart;
     private string? errorMessage;
+    private string? successMessage;
+
+    private IEnumerable<DateTime> WeekDays => Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i));
 
     protected override async Task OnInitializedAsync()
     {
@@ -77,41 +143,103 @@ else
         var authState = await AuthProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-        await LoadUpcoming();
+        weekStart = StartOfWeek(DateTime.Today);
+        await LoadWeek();
+        await BuildSlots();
     }
 
-    private async Task LoadUpcoming()
+    private static DateTime StartOfWeek(DateTime date)
     {
-        upcoming = await Db.Reservations
+        // Monday as the first day of the week.
+        int diff = ((int)date.DayOfWeek + 6) % 7;
+        return date.Date.AddDays(-diff);
+    }
+
+    private async Task LoadWeek()
+    {
+        if (room is null)
+        {
+            return;
+        }
+
+        var weekEnd = weekStart.AddDays(7);
+        weekReservations = await Db.Reservations
             .AsNoTracking()
-            .Where(r => r.RoomId == RoomId && r.EndTime > DateTime.Now)
-            .OrderBy(r => r.StartTime)
+            .Where(r => r.RoomId == RoomId && r.StartTime < weekEnd && r.EndTime > weekStart)
             .ToListAsync();
     }
 
-    private async Task SubmitReservation()
+    private async Task PreviousWeek()
     {
+        weekStart = weekStart.AddDays(-7);
+        await LoadWeek();
+    }
+
+    private async Task NextWeek()
+    {
+        weekStart = weekStart.AddDays(7);
+        await LoadWeek();
+    }
+
+    // Builds the list of free, hour-aligned slots for the chosen date and duration.
+    private async Task BuildSlots()
+    {
+        selectedStart = null;
         errorMessage = null;
-        var start = booking.StartTime!.Value;
-        var end = booking.EndTime!.Value;
+        availableSlots = new();
 
-        if (start < DateTime.Now)
+        if (room is null)
         {
-            errorMessage = "The start time cannot be in the past.";
-            return;
-        }
-        if (end <= start)
-        {
-            errorMessage = "The end time must be after the start time.";
             return;
         }
 
-        // Two reservations overlap when one starts before the other ends and vice versa.
+        var dayStart = selectedDate.Date;
+        var dayEnd = dayStart.AddDays(1);
+
+        var dayReservations = await Db.Reservations
+            .AsNoTracking()
+            .Where(r => r.RoomId == RoomId && r.StartTime < dayEnd && r.EndTime > dayStart)
+            .ToListAsync();
+
+        // Slots are fixed blocks stepping by the chosen duration (e.g. 2h: 08:00-10:00, 10:00-12:00, ...).
+        for (int hour = OpeningHour; hour + durationHours <= ClosingHour; hour += durationHours)
+        {
+            var start = dayStart.AddHours(hour);
+            var end = start.AddHours(durationHours);
+
+            if (start < DateTime.Now)
+            {
+                continue; // don't offer slots in the past
+            }
+
+            var overlaps = dayReservations.Any(r => r.StartTime < end && start < r.EndTime);
+            if (!overlaps)
+            {
+                availableSlots.Add((start, end));
+            }
+        }
+    }
+
+    private async Task Confirm()
+    {
+        if (selectedStart is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        successMessage = null;
+        var start = selectedStart.Value;
+        var end = start.AddHours(durationHours);
+
+        // Re-check right before saving in case someone booked the same slot in the meantime.
         var overlaps = await Db.Reservations
             .AnyAsync(r => r.RoomId == RoomId && r.StartTime < end && start < r.EndTime);
         if (overlaps)
         {
-            errorMessage = "This time slot is already reserved. Please choose another time.";
+            errorMessage = "That slot was just taken. Please pick another one.";
+            await LoadWeek();
+            await BuildSlots();
             return;
         }
 
@@ -124,15 +252,10 @@ else
         });
         await Db.SaveChangesAsync();
 
-        Navigation.NavigateTo("/my-reservations");
-    }
+        successMessage = $"Reserved {start:dd.MM.yyyy} {start:HH:mm} – {end:HH:mm}.";
 
-    private class BookingModel
-    {
-        [Required]
-        public DateTime? StartTime { get; set; }
-
-        [Required]
-        public DateTime? EndTime { get; set; }
+        // Reload so the schedule immediately shows the new block as taken.
+        await LoadWeek();
+        await BuildSlots();
     }
 }
