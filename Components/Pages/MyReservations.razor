@@ -77,11 +77,13 @@ else
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         var entity = await db.Reservations.FindAsync(reservation.Id);
-        if (entity is not null)
+
+        // Only delete the reservation if it actually belongs to the current user.
+        if (entity is not null && entity.UserId == userId)
         {
             db.Reservations.Remove(entity);
             await db.SaveChangesAsync();
+            reservations!.Remove(reservation);
         }
-        reservations!.Remove(reservation);
     }
 }
