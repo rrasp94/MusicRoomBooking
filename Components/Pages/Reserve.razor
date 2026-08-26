@@ -1,6 +1,7 @@
 @page "/rooms/{RoomId:int}/reserve"
 @attribute [Authorize]
 @using System.Security.Claims
+@using System.Data
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
@@ -237,9 +238,13 @@ else
         var start = selectedStart.Value;
         var end = start.AddHours(durationHours);
 
-        await using (var db = await DbFactory.CreateDbContextAsync())
+        try
         {
-            // Re-check right before saving in case someone booked the same slot in the meantime.
+            await using var db = await DbFactory.CreateDbContextAsync();
+            // A serializable transaction makes the overlap check and the insert atomic, so two
+            // simultaneous requests cannot both book the same slot.
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
             var overlaps = await db.Reservations
                 .AnyAsync(r => r.RoomId == RoomId && r.StartTime < end && start < r.EndTime);
             if (overlaps)
@@ -258,6 +263,15 @@ else
                 EndTime = end
             });
             await db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Another request committed the same slot first and tripped the serializable transaction.
+            errorMessage = "That slot was just taken. Please pick another one.";
+            await LoadWeek();
+            await BuildSlots();
+            return;
         }
 
         successMessage = $"Reserved {start:dd.MM.yyyy} {start:HH:mm} – {end:HH:mm}.";

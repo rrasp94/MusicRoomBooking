@@ -1,5 +1,6 @@
 @page "/admin/reservations/edit/{Id:int}"
 @attribute [Authorize(Roles = "Admin")]
+@using System.Data
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 
@@ -67,30 +68,42 @@ else
             return;
         }
 
-        await using var db = await DbFactory.CreateDbContextAsync();
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            // Serializable transaction keeps the overlap check and update atomic under concurrent edits.
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
-        // Check for overlaps with other reservations of the same room (ignore this reservation itself).
-        var overlaps = await db.Reservations.AnyAsync(r =>
-            r.RoomId == reservation.RoomId &&
-            r.Id != reservation.Id &&
-            r.StartTime < reservation.EndTime &&
-            reservation.StartTime < r.EndTime);
-        if (overlaps)
+            // Check for overlaps with other reservations of the same room (ignore this reservation itself).
+            var overlaps = await db.Reservations.AnyAsync(r =>
+                r.RoomId == reservation.RoomId &&
+                r.Id != reservation.Id &&
+                r.StartTime < reservation.EndTime &&
+                reservation.StartTime < r.EndTime);
+            if (overlaps)
+            {
+                errorMessage = "The new time overlaps another reservation for this room.";
+                return;
+            }
+
+            var entity = await db.Reservations.FindAsync(reservation.Id);
+            if (entity is null)
+            {
+                errorMessage = "This reservation no longer exists.";
+                return;
+            }
+
+            entity.StartTime = reservation.StartTime;
+            entity.EndTime = reservation.EndTime;
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateException)
         {
             errorMessage = "The new time overlaps another reservation for this room.";
             return;
         }
 
-        var entity = await db.Reservations.FindAsync(reservation.Id);
-        if (entity is null)
-        {
-            errorMessage = "This reservation no longer exists.";
-            return;
-        }
-
-        entity.StartTime = reservation.StartTime;
-        entity.EndTime = reservation.EndTime;
-        await db.SaveChangesAsync();
         Navigation.NavigateTo("/admin/reservations");
     }
 }
