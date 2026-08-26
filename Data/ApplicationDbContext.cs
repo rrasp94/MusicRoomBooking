@@ -46,5 +46,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .WithMany()
             .HasForeignKey(r => r.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // A user can leave at most one review per room.
+        builder.Entity<Review>()
+            .HasIndex(r => new { r.RoomId, r.UserId })
+            .IsUnique();
     }
 }
