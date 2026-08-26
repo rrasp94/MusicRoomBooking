@@ -36,17 +36,57 @@ else
             </div>
         }
     </div>
+
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-secondary" disabled="@(currentPage <= 1)" @onclick="PreviousPage">&laquo; Prev</button>
+        <span>Page @currentPage of @totalPages</span>
+        <button class="btn btn-sm btn-outline-secondary" disabled="@(currentPage >= totalPages)" @onclick="NextPage">Next &raquo;</button>
+    </div>
 }
 
 @code {
+    private const int PageSize = 6;
+    private int currentPage = 1;
+    private int totalPages = 1;
     private List<Room>? rooms;
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadPage();
+    }
+
+    private async Task LoadPage()
+    {
         await using var db = await DbFactory.CreateDbContextAsync();
+
+        var total = await db.Rooms.CountAsync(r => r.IsActive);
+        totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+        currentPage = Math.Clamp(currentPage, 1, totalPages);
+
         rooms = await db.Rooms
+            .AsNoTracking()
             .Where(r => r.IsActive)
             .OrderBy(r => r.Name)
+            .Skip((currentPage - 1) * PageSize)
+            .Take(PageSize)
             .ToListAsync();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadPage();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+            await LoadPage();
+        }
     }
 }

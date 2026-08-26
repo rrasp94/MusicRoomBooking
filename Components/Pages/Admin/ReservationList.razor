@@ -43,20 +43,59 @@ else
             }
         </tbody>
     </table>
+
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-secondary" disabled="@(currentPage <= 1)" @onclick="PreviousPage">&laquo; Prev</button>
+        <span>Page @currentPage of @totalPages</span>
+        <button class="btn btn-sm btn-outline-secondary" disabled="@(currentPage >= totalPages)" @onclick="NextPage">Next &raquo;</button>
+    </div>
 }
 
 @code {
+    private const int PageSize = 10;
+    private int currentPage = 1;
+    private int totalPages = 1;
     private List<Reservation>? reservations;
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadPage();
+    }
+
+    private async Task LoadPage()
+    {
         await using var db = await DbFactory.CreateDbContextAsync();
+
+        var total = await db.Reservations.CountAsync();
+        totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+        currentPage = Math.Clamp(currentPage, 1, totalPages);
+
         reservations = await db.Reservations
             .AsNoTracking()
             .Include(r => r.Room)
             .Include(r => r.User)
             .OrderByDescending(r => r.StartTime)
+            .Skip((currentPage - 1) * PageSize)
+            .Take(PageSize)
             .ToListAsync();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadPage();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+            await LoadPage();
+        }
     }
 
     private async Task Delete(Reservation reservation)
@@ -74,6 +113,6 @@ else
             db.Reservations.Remove(entity);
             await db.SaveChangesAsync();
         }
-        reservations!.Remove(reservation);
+        await LoadPage();
     }
 }

@@ -48,9 +48,18 @@ else
             }
         </tbody>
     </table>
+
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-secondary" disabled="@(currentPage <= 1)" @onclick="PreviousPage">&laquo; Prev</button>
+        <span>Page @currentPage of @totalPages</span>
+        <button class="btn btn-sm btn-outline-secondary" disabled="@(currentPage >= totalPages)" @onclick="NextPage">Next &raquo;</button>
+    </div>
 }
 
 @code {
+    private const int PageSize = 10;
+    private int currentPage = 1;
+    private int totalPages = 1;
     private List<Reservation>? reservations;
     private string? userId;
 
@@ -59,18 +68,43 @@ else
         var authState = await AuthProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-        await LoadReservations();
+        await LoadPage();
     }
 
-    private async Task LoadReservations()
+    private async Task LoadPage()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
+
+        var total = await db.Reservations.CountAsync(r => r.UserId == userId);
+        totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+        currentPage = Math.Clamp(currentPage, 1, totalPages);
+
         reservations = await db.Reservations
             .AsNoTracking()
             .Include(r => r.Room)
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.StartTime)
+            .Skip((currentPage - 1) * PageSize)
+            .Take(PageSize)
             .ToListAsync();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadPage();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+            await LoadPage();
+        }
     }
 
     private async Task Cancel(Reservation reservation)
@@ -83,7 +117,7 @@ else
         {
             db.Reservations.Remove(entity);
             await db.SaveChangesAsync();
-            reservations!.Remove(reservation);
+            await LoadPage();
         }
     }
 }
