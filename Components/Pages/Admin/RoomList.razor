@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IJSRuntime JS
+@inject ILogger<RoomList> Logger
 
 <PageTitle>Manage rooms</PageTitle>
 
@@ -9,6 +10,11 @@
     <h1>Manage rooms</h1>
     <a href="/admin/rooms/create" class="btn btn-primary">Add room</a>
 </div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
 
 @if (rooms is null)
 {
@@ -58,6 +64,7 @@ else
 
 @code {
     private List<Room>? rooms;
+    private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,13 +80,23 @@ else
             return;
         }
 
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var entity = await db.Rooms.FindAsync(room.Id);
-        if (entity is not null)
+        errorMessage = null;
+        try
         {
-            db.Rooms.Remove(entity);
-            await db.SaveChangesAsync();
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var entity = await db.Rooms.FindAsync(room.Id);
+            if (entity is not null)
+            {
+                db.Rooms.Remove(entity);
+                await db.SaveChangesAsync();
+            }
+            rooms!.Remove(room);
         }
-        rooms!.Remove(room);
+        catch (DbUpdateException ex)
+        {
+            // Deleting a room fails while it still has reservations or reviews (delete behaviour is Restrict).
+            Logger.LogError(ex, "Failed to delete room {RoomId}", room.Id);
+            errorMessage = "This room cannot be deleted because it still has reservations or reviews.";
+        }
     }
 }

@@ -3,6 +3,7 @@
 @using System.Data
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject ILogger<EditReservation> Logger
 
 <PageTitle>Edit reservation</PageTitle>
 
@@ -98,8 +99,9 @@ else
             await db.SaveChangesAsync();
             await tx.CommitAsync();
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
+            Logger.LogError(ex, "Failed to update reservation {ReservationId}", reservation.Id);
             errorMessage = "The new time overlaps another reservation for this room.";
             return;
         }

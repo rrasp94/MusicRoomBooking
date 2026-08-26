@@ -5,6 +5,7 @@
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
+@inject ILogger<Reserve> Logger
 
 <PageTitle>Reserve a room</PageTitle>
 
@@ -265,9 +266,10 @@ else
             await db.SaveChangesAsync();
             await tx.CommitAsync();
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
             // Another request committed the same slot first and tripped the serializable transaction.
+            Logger.LogError(ex, "Failed to save reservation for room {RoomId}", RoomId);
             errorMessage = "That slot was just taken. Please pick another one.";
             await LoadWeek();
             await BuildSlots();

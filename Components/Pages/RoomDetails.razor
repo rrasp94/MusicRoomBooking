@@ -3,6 +3,7 @@
 @using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ILogger<RoomDetails> Logger
 
 <PageTitle>Room details</PageTitle>
 
@@ -69,6 +70,11 @@ else
         }
     </h3>
 
+    @if (!string.IsNullOrEmpty(reviewError))
+    {
+        <div class="alert alert-danger">@reviewError</div>
+    }
+
     @if (canReview)
     {
         <div class="card mb-4">
@@ -132,6 +138,7 @@ else
     private string? userId;
     private bool canReview;
     private bool alreadyReviewed;
+    private string? reviewError;
 
     private ReviewModel newReview = new();
 
@@ -194,8 +201,10 @@ else
 
     private async Task SubmitReview()
     {
-        await using (var db = await DbFactory.CreateDbContextAsync())
+        reviewError = null;
+        try
         {
+            await using var db = await DbFactory.CreateDbContextAsync();
             db.Reviews.Add(new Review
             {
                 RoomId = Id,
@@ -204,6 +213,13 @@ else
                 Comment = newReview.Comment
             });
             await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            // The unique index blocks a second review from the same user for this room.
+            Logger.LogError(ex, "Failed to save review for room {RoomId}", Id);
+            reviewError = "You have already reviewed this room.";
+            return;
         }
 
         newReview = new ReviewModel();
