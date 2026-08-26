@@ -23,39 +23,78 @@ public static class SeedData
             }
         }
 
-        // Admin credentials come from configuration (set the password via user-secrets or an environment variable),
-        // so no password is stored in source control.
-        var adminEmail = config["AdminUser:Email"];
-        var adminPassword = config["AdminUser:Password"];
+        // Account credentials come from configuration (set passwords via user-secrets or environment
+        // variables), so no password is stored in source control.
+        await CreateUserAsync(userManager, logger,
+            config["AdminUser:Email"], config["AdminUser:Password"], "Admin", "User", "Admin");
 
-        if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
-        {
-            logger.LogWarning("Admin credentials are not configured (AdminUser:Email / AdminUser:Password); skipping admin seeding.");
-        }
-        else if (await userManager.FindByEmailAsync(adminEmail) is null)
-        {
-            var admin = new ApplicationUser
-            {
-                UserName = adminEmail,
-                Email = adminEmail,
-                EmailConfirmed = true,
-                FirstName = "Admin",
-                LastName = "User"
-            };
-
-            var result = await userManager.CreateAsync(admin, adminPassword);
-            if (result.Succeeded)
-            {
-                await userManager.AddToRoleAsync(admin, "Admin");
-            }
-            else
-            {
-                logger.LogError("Failed to create admin account: {Errors}",
-                    string.Join(", ", result.Errors.Select(e => e.Description)));
-            }
-        }
+        var demoUser = await CreateUserAsync(userManager, logger,
+            config["DemoUser:Email"], config["DemoUser:Password"], "Demo", "User", "User");
 
         await SeedRoomsAsync(db);
+        await SeedSampleBookingsAsync(db, demoUser);
+    }
+
+    // Creates a user with the given role if the credentials are configured; returns the (existing or new) user.
+    private static async Task<ApplicationUser?> CreateUserAsync(UserManager<ApplicationUser> userManager,
+        ILogger logger, string? email, string? password, string firstName, string lastName, string role)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            logger.LogWarning("Credentials for the {Role} account are not configured; skipping.", role);
+            return null;
+        }
+
+        var existing = await userManager.FindByEmailAsync(email);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            FirstName = firstName,
+            LastName = lastName
+        };
+
+        var result = await userManager.CreateAsync(user, password);
+        if (result.Succeeded)
+        {
+            await userManager.AddToRoleAsync(user, role);
+            return user;
+        }
+
+        logger.LogError("Failed to create the {Role} account: {Errors}",
+            role, string.Join(", ", result.Errors.Select(e => e.Description)));
+        return null;
+    }
+
+    // Gives the demo user a past and an upcoming reservation so reviews and cancelling can be demonstrated.
+    private static async Task SeedSampleBookingsAsync(ApplicationDbContext db, ApplicationUser? demoUser)
+    {
+        if (demoUser is null || await db.Reservations.AnyAsync())
+        {
+            return;
+        }
+
+        var room = await db.Rooms.OrderBy(r => r.Id).FirstOrDefaultAsync();
+        if (room is null)
+        {
+            return;
+        }
+
+        var today = DateTime.UtcNow.Date;
+        var pastStart = today.AddDays(-3).AddHours(10);
+        var futureStart = today.AddDays(3).AddHours(10);
+
+        db.Reservations.AddRange(
+            new Reservation { RoomId = room.Id, UserId = demoUser.Id, StartTime = pastStart, EndTime = pastStart.AddHours(2) },
+            new Reservation { RoomId = room.Id, UserId = demoUser.Id, StartTime = futureStart, EndTime = futureStart.AddHours(2) });
+
+        await db.SaveChangesAsync();
     }
 
     // Adds a few sample rooms with equipment the first time the app runs (only when there are no rooms yet).
