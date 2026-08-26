@@ -189,7 +189,7 @@ else
         // A user may review a room only after they have had a finished reservation for it.
         await using var db = await DbFactory.CreateDbContextAsync();
         canReview = await db.Reservations
-            .AnyAsync(r => r.RoomId == Id && r.UserId == userId && r.EndTime < DateTime.Now);
+            .AnyAsync(r => r.RoomId == Id && r.UserId == userId && r.EndTime < DateTime.UtcNow);
     }
 
     private async Task SubmitReview()

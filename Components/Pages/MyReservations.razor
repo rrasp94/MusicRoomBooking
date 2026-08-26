@@ -35,7 +35,7 @@ else
                     <td>@r.StartTime.ToString("g")</td>
                     <td>@r.EndTime.ToString("g")</td>
                     <td class="text-end">
-                        @if (r.StartTime > DateTime.Now)
+                        @if (r.StartTime > DateTime.UtcNow)
                         {
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => Cancel(r)">Cancel</button>
                         }

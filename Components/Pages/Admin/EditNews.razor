@@ -58,7 +58,7 @@ else
 
         entity.Title = news!.Title;
         entity.Content = news.Content;
-        entity.UpdatedAt = DateTime.Now;
+        entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         Navigation.NavigateTo("/admin/news");
     }

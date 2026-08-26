@@ -33,7 +33,7 @@
 
     private async Task Save()
     {
-        news.CreatedAt = DateTime.Now;
+        news.CreatedAt = DateTime.UtcNow;
         await using var db = await DbFactory.CreateDbContextAsync();
         db.NewsItems.Add(news);
         await db.SaveChangesAsync();
