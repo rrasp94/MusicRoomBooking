@@ -1,6 +1,6 @@
 @page "/admin/rooms/create"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 
 <PageTitle>Add room</PageTitle>
@@ -45,8 +45,9 @@
 
     private async Task SaveRoom()
     {
-        Db.Rooms.Add(room);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Rooms.Add(room);
+        await db.SaveChangesAsync();
         Navigation.NavigateTo("/admin/rooms");
     }
 }

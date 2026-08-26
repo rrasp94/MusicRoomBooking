@@ -1,6 +1,6 @@
 @page "/admin/rooms"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IJSRuntime JS
 
 <PageTitle>Manage rooms</PageTitle>
@@ -61,7 +61,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        rooms = await Db.Rooms.OrderBy(r => r.Name).ToListAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rooms = await db.Rooms.AsNoTracking().OrderBy(r => r.Name).ToListAsync();
     }
 
     private async Task DeleteRoom(Room room)
@@ -72,8 +73,13 @@ else
             return;
         }
 
-        Db.Rooms.Remove(room);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Rooms.FindAsync(room.Id);
+        if (entity is not null)
+        {
+            db.Rooms.Remove(entity);
+            await db.SaveChangesAsync();
+        }
         rooms!.Remove(room);
     }
 }

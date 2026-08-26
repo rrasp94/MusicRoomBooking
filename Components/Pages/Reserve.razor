@@ -1,7 +1,7 @@
 @page "/rooms/{RoomId:int}/reserve"
 @attribute [Authorize]
 @using System.Security.Claims
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
 
@@ -138,7 +138,10 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        room = await Db.Rooms.FirstOrDefaultAsync(r => r.Id == RoomId && r.IsActive);
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == RoomId && r.IsActive);
+        }
 
         var authState = await AuthProvider.GetAuthenticationStateAsync();
         userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -163,7 +166,8 @@ else
         }
 
         var weekEnd = weekStart.AddDays(7);
-        weekReservations = await Db.Reservations
+        await using var db = await DbFactory.CreateDbContextAsync();
+        weekReservations = await db.Reservations
             .AsNoTracking()
             .Where(r => r.RoomId == RoomId && r.StartTime < weekEnd && r.EndTime > weekStart)
             .ToListAsync();
@@ -196,7 +200,8 @@ else
         var dayStart = selectedDate.Date;
         var dayEnd = dayStart.AddDays(1);
 
-        var dayReservations = await Db.Reservations
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var dayReservations = await db.Reservations
             .AsNoTracking()
             .Where(r => r.RoomId == RoomId && r.StartTime < dayEnd && r.EndTime > dayStart)
             .ToListAsync();
@@ -232,25 +237,28 @@ else
         var start = selectedStart.Value;
         var end = start.AddHours(durationHours);
 
-        // Re-check right before saving in case someone booked the same slot in the meantime.
-        var overlaps = await Db.Reservations
-            .AnyAsync(r => r.RoomId == RoomId && r.StartTime < end && start < r.EndTime);
-        if (overlaps)
+        await using (var db = await DbFactory.CreateDbContextAsync())
         {
-            errorMessage = "That slot was just taken. Please pick another one.";
-            await LoadWeek();
-            await BuildSlots();
-            return;
-        }
+            // Re-check right before saving in case someone booked the same slot in the meantime.
+            var overlaps = await db.Reservations
+                .AnyAsync(r => r.RoomId == RoomId && r.StartTime < end && start < r.EndTime);
+            if (overlaps)
+            {
+                errorMessage = "That slot was just taken. Please pick another one.";
+                await LoadWeek();
+                await BuildSlots();
+                return;
+            }
 
-        Db.Reservations.Add(new Reservation
-        {
-            RoomId = RoomId,
-            UserId = userId!,
-            StartTime = start,
-            EndTime = end
-        });
-        await Db.SaveChangesAsync();
+            db.Reservations.Add(new Reservation
+            {
+                RoomId = RoomId,
+                UserId = userId!,
+                StartTime = start,
+                EndTime = end
+            });
+            await db.SaveChangesAsync();
+        }
 
         successMessage = $"Reserved {start:dd.MM.yyyy} {start:HH:mm} – {end:HH:mm}.";
 

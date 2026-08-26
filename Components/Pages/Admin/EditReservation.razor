@@ -1,6 +1,6 @@
 @page "/admin/reservations/edit/{Id:int}"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 
 <PageTitle>Edit reservation</PageTitle>
@@ -49,7 +49,9 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        reservation = await Db.Reservations
+        await using var db = await DbFactory.CreateDbContextAsync();
+        reservation = await db.Reservations
+            .AsNoTracking()
             .Include(r => r.Room)
             .Include(r => r.User)
             .FirstOrDefaultAsync(r => r.Id == Id);
@@ -65,8 +67,10 @@ else
             return;
         }
 
+        await using var db = await DbFactory.CreateDbContextAsync();
+
         // Check for overlaps with other reservations of the same room (ignore this reservation itself).
-        var overlaps = await Db.Reservations.AnyAsync(r =>
+        var overlaps = await db.Reservations.AnyAsync(r =>
             r.RoomId == reservation.RoomId &&
             r.Id != reservation.Id &&
             r.StartTime < reservation.EndTime &&
@@ -77,7 +81,16 @@ else
             return;
         }
 
-        await Db.SaveChangesAsync();
+        var entity = await db.Reservations.FindAsync(reservation.Id);
+        if (entity is null)
+        {
+            errorMessage = "This reservation no longer exists.";
+            return;
+        }
+
+        entity.StartTime = reservation.StartTime;
+        entity.EndTime = reservation.EndTime;
+        await db.SaveChangesAsync();
         Navigation.NavigateTo("/admin/reservations");
     }
 }

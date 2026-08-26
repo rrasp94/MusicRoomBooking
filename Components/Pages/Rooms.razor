@@ -1,5 +1,5 @@
 @page "/rooms"
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 
 <PageTitle>Rooms</PageTitle>
 
@@ -43,7 +43,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        rooms = await Db.Rooms
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rooms = await db.Rooms
             .Where(r => r.IsActive)
             .OrderBy(r => r.Name)
             .ToListAsync();

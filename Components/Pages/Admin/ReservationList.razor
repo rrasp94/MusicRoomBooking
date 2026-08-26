@@ -1,6 +1,6 @@
 @page "/admin/reservations"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IJSRuntime JS
 
 <PageTitle>Manage reservations</PageTitle>
@@ -50,7 +50,9 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        reservations = await Db.Reservations
+        await using var db = await DbFactory.CreateDbContextAsync();
+        reservations = await db.Reservations
+            .AsNoTracking()
             .Include(r => r.Room)
             .Include(r => r.User)
             .OrderByDescending(r => r.StartTime)
@@ -65,8 +67,13 @@ else
             return;
         }
 
-        Db.Reservations.Remove(reservation);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Reservations.FindAsync(reservation.Id);
+        if (entity is not null)
+        {
+            db.Reservations.Remove(entity);
+            await db.SaveChangesAsync();
+        }
         reservations!.Remove(reservation);
     }
 }

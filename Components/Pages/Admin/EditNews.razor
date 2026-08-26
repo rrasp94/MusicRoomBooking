@@ -1,6 +1,6 @@
 @page "/admin/news/edit/{Id:int}"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 
 <PageTitle>Edit news</PageTitle>
@@ -43,13 +43,23 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        news = await Db.NewsItems.FindAsync(Id);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        news = await db.NewsItems.AsNoTracking().FirstOrDefaultAsync(n => n.Id == Id);
     }
 
     private async Task Save()
     {
-        news!.UpdatedAt = DateTime.Now;
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.NewsItems.FindAsync(Id);
+        if (entity is null)
+        {
+            return;
+        }
+
+        entity.Title = news!.Title;
+        entity.Content = news.Content;
+        entity.UpdatedAt = DateTime.Now;
+        await db.SaveChangesAsync();
         Navigation.NavigateTo("/admin/news");
     }
 }

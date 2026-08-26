@@ -1,5 +1,5 @@
 @page "/news"
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 
 <PageTitle>News</PageTitle>
 
@@ -32,7 +32,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        news = await Db.NewsItems
+        await using var db = await DbFactory.CreateDbContextAsync();
+        news = await db.NewsItems
             .AsNoTracking()
             .OrderByDescending(n => n.CreatedAt)
             .ToListAsync();

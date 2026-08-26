@@ -1,6 +1,6 @@
 @page "/admin/rooms/edit/{Id:int}"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 
 <PageTitle>Edit room</PageTitle>
@@ -55,13 +55,15 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        room = await Db.Rooms.FindAsync(Id);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == Id);
     }
 
     private async Task SaveRoom()
     {
-        Db.Rooms.Update(room!);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Rooms.Update(room!);
+        await db.SaveChangesAsync();
         Navigation.NavigateTo("/admin/rooms");
     }
 }

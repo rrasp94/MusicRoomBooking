@@ -1,6 +1,6 @@
 @page "/admin/news/create"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 
 <PageTitle>Add news</PageTitle>
@@ -34,8 +34,9 @@
     private async Task Save()
     {
         news.CreatedAt = DateTime.Now;
-        Db.NewsItems.Add(news);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.NewsItems.Add(news);
+        await db.SaveChangesAsync();
         Navigation.NavigateTo("/admin/news");
     }
 }

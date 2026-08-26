@@ -1,6 +1,6 @@
 @page "/admin/rooms/{RoomId:int}/equipment"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 
 <PageTitle>Room equipment</PageTitle>
@@ -90,10 +90,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        room = await Db.Rooms.FindAsync(RoomId);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == RoomId);
         if (room is not null)
         {
-            equipment = await Db.Equipment
+            equipment = await db.Equipment
                 .AsNoTracking()
                 .Where(e => e.RoomId == RoomId)
                 .OrderBy(e => e.Name)
@@ -104,17 +105,19 @@ else
 
     private async Task SaveEquipment()
     {
+        await using var db = await DbFactory.CreateDbContextAsync();
         if (editing.Id == 0)
         {
-            Db.Equipment.Add(editing);
+            db.Equipment.Add(editing);
         }
         else
         {
-            Db.Equipment.Update(editing);
+            db.Equipment.Update(editing);
         }
-        await Db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
-        equipment = await Db.Equipment
+        equipment = await db.Equipment
+            .AsNoTracking()
             .Where(e => e.RoomId == RoomId)
             .OrderBy(e => e.Name)
             .ToListAsync();
@@ -135,8 +138,13 @@ else
 
     private async Task DeleteEquipment(Equipment item)
     {
-        Db.Equipment.Remove(item);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Equipment.FindAsync(item.Id);
+        if (entity is not null)
+        {
+            db.Equipment.Remove(entity);
+            await db.SaveChangesAsync();
+        }
         equipment.Remove(item);
         if (editing.Id == item.Id)
         {

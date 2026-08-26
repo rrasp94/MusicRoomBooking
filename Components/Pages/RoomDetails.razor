@@ -1,7 +1,7 @@
 @page "/rooms/{Id:int}"
 @using System.Security.Claims
 @using System.ComponentModel.DataAnnotations
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 
 <PageTitle>Room details</PageTitle>
@@ -137,9 +137,13 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        room = await Db.Rooms
-            .Include(r => r.EquipmentItems)
-            .FirstOrDefaultAsync(r => r.Id == Id && r.IsActive);
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            room = await db.Rooms
+                .AsNoTracking()
+                .Include(r => r.EquipmentItems)
+                .FirstOrDefaultAsync(r => r.Id == Id && r.IsActive);
+        }
 
         if (room is not null)
         {
@@ -155,7 +159,9 @@ else
 
     private async Task LoadReviews()
     {
-        reviews = await Db.Reviews
+        await using var db = await DbFactory.CreateDbContextAsync();
+        reviews = await db.Reviews
+            .AsNoTracking()
             .Include(r => r.User)
             .Where(r => r.RoomId == Id)
             .OrderByDescending(r => r.CreatedAt)
@@ -181,20 +187,24 @@ else
         }
 
         // A user may review a room only after they have had a finished reservation for it.
-        canReview = await Db.Reservations
+        await using var db = await DbFactory.CreateDbContextAsync();
+        canReview = await db.Reservations
             .AnyAsync(r => r.RoomId == Id && r.UserId == userId && r.EndTime < DateTime.Now);
     }
 
     private async Task SubmitReview()
     {
-        Db.Reviews.Add(new Review
+        await using (var db = await DbFactory.CreateDbContextAsync())
         {
-            RoomId = Id,
-            UserId = userId!,
-            Rating = newReview.Rating,
-            Comment = newReview.Comment
-        });
-        await Db.SaveChangesAsync();
+            db.Reviews.Add(new Review
+            {
+                RoomId = Id,
+                UserId = userId!,
+                Rating = newReview.Rating,
+                Comment = newReview.Comment
+            });
+            await db.SaveChangesAsync();
+        }
 
         newReview = new ReviewModel();
         await LoadReviews();

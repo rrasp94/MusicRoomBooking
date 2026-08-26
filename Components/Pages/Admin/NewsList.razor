@@ -1,6 +1,6 @@
 @page "/admin/news"
 @attribute [Authorize(Roles = "Admin")]
-@inject ApplicationDbContext Db
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IJSRuntime JS
 
 <PageTitle>Manage news</PageTitle>
@@ -49,7 +49,9 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        news = await Db.NewsItems
+        await using var db = await DbFactory.CreateDbContextAsync();
+        news = await db.NewsItems
+            .AsNoTracking()
             .OrderByDescending(n => n.CreatedAt)
             .ToListAsync();
     }
@@ -62,8 +64,13 @@ else
             return;
         }
 
-        Db.NewsItems.Remove(item);
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.NewsItems.FindAsync(item.Id);
+        if (entity is not null)
+        {
+            db.NewsItems.Remove(entity);
+            await db.SaveChangesAsync();
+        }
         news!.Remove(item);
     }
 }
