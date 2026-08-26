@@ -4,17 +4,16 @@ using MusicRoomBooking.Models;
 
 namespace MusicRoomBooking.Data;
 
-// Creates the two roles, a demo admin account and a set of sample rooms on startup, so the app is usable right after cloning.
+// Creates the two roles, an admin account and a set of sample rooms on startup, so the app is usable right after cloning.
 public static class SeedData
 {
-    private const string AdminEmail = "admin@musicrooms.local";
-    private const string AdminPassword = "Admin123!";
-
     public static async Task InitializeAsync(IServiceProvider services)
     {
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         var db = services.GetRequiredService<ApplicationDbContext>();
+        var config = services.GetRequiredService<IConfiguration>();
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("SeedData");
 
         foreach (var role in new[] { "Admin", "User" })
         {
@@ -24,21 +23,35 @@ public static class SeedData
             }
         }
 
-        if (await userManager.FindByEmailAsync(AdminEmail) is null)
+        // Admin credentials come from configuration (set the password via user-secrets or an environment variable),
+        // so no password is stored in source control.
+        var adminEmail = config["AdminUser:Email"];
+        var adminPassword = config["AdminUser:Password"];
+
+        if (string.IsNullOrWhiteSpace(adminEmail) || string.IsNullOrWhiteSpace(adminPassword))
+        {
+            logger.LogWarning("Admin credentials are not configured (AdminUser:Email / AdminUser:Password); skipping admin seeding.");
+        }
+        else if (await userManager.FindByEmailAsync(adminEmail) is null)
         {
             var admin = new ApplicationUser
             {
-                UserName = AdminEmail,
-                Email = AdminEmail,
+                UserName = adminEmail,
+                Email = adminEmail,
                 EmailConfirmed = true,
                 FirstName = "Admin",
                 LastName = "User"
             };
 
-            var result = await userManager.CreateAsync(admin, AdminPassword);
+            var result = await userManager.CreateAsync(admin, adminPassword);
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(admin, "Admin");
+            }
+            else
+            {
+                logger.LogError("Failed to create admin account: {Errors}",
+                    string.Join(", ", result.Errors.Select(e => e.Description)));
             }
         }
 
