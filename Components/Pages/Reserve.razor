@@ -206,25 +206,12 @@ else
         var dayReservations = await db.Reservations
             .AsNoTracking()
             .Where(r => r.RoomId == RoomId && r.StartTime < dayEnd && r.EndTime > dayStart)
+            .Select(r => new { r.StartTime, r.EndTime })
             .ToListAsync();
 
-        // Slots are fixed blocks stepping by the chosen duration (e.g. 2h: 08:00-10:00, 10:00-12:00, ...).
-        for (int hour = OpeningHour; hour + durationHours <= ClosingHour; hour += durationHours)
-        {
-            var start = dayStart.AddHours(hour);
-            var end = start.AddHours(durationHours);
-
-            if (start < DateTime.UtcNow)
-            {
-                continue; // don't offer slots in the past
-            }
-
-            var overlaps = dayReservations.Any(r => r.StartTime < end && start < r.EndTime);
-            if (!overlaps)
-            {
-                availableSlots.Add((start, end));
-            }
-        }
+        availableSlots = ReservationRules.BuildAvailableSlots(
+            selectedDate, durationHours, OpeningHour, ClosingHour, DateTime.UtcNow,
+            dayReservations.Select(r => (r.StartTime, r.EndTime)));
     }
 
     private async Task Confirm()

@@ -1,6 +1,9 @@
+using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MusicRoomBooking.Models;
+
+[assembly: InternalsVisibleTo("MusicRoomBooking.Tests")]
 
 namespace MusicRoomBooking.Data;
 
@@ -73,7 +76,7 @@ public static class SeedData
     }
 
     // Gives the demo user a past and an upcoming reservation so reviews and cancelling can be demonstrated.
-    private static async Task SeedSampleBookingsAsync(ApplicationDbContext db, ApplicationUser? demoUser)
+    internal static async Task SeedSampleBookingsAsync(ApplicationDbContext db, ApplicationUser? demoUser)
     {
         if (demoUser is null || await db.Reservations.AnyAsync())
         {
@@ -98,7 +101,7 @@ public static class SeedData
     }
 
     // Adds a few sample rooms with equipment the first time the app runs (only when there are no rooms yet).
-    private static async Task SeedRoomsAsync(ApplicationDbContext db)
+    internal static async Task SeedRoomsAsync(ApplicationDbContext db)
     {
         if (await db.Rooms.AnyAsync())
         {
